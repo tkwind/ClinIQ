@@ -199,10 +199,12 @@ def normalize_disease_name(disease: str) -> str:
 
 def disease_aliases(disease: str) -> List[str]:
     normalized = normalize_disease_name(disease)
+    # Step 3: Add Synonym Awareness (Always Rank, Never Reject)
     alias_map = {
-        "lung cancer": ["lung cancer", "nsclc", "small cell lung", "non-small cell lung", "sclc"],
-        "breast cancer": ["breast cancer", "breast carcinoma"],
-        "glioblastoma": ["glioblastoma", "glioblastoma multiforme", "gbm"],
+        "lung cancer": ["lung cancer", "nsclc", "small cell lung", "non-small cell lung", "sclc", "bronchogenic carcinoma"],
+        "breast cancer": ["breast cancer", "breast carcinoma", "brca", "mammary neoplasm"],
+        "glioblastoma": ["glioblastoma", "glioblastoma multiforme", "gbm", "glioma", "brain tumor", "astrocytoma"],
+        "diabetes": ["diabetes", "type 2 diabetes", "t2dm", "diabetes mellitus", "insulin resistance"],
     }
     if normalized in alias_map:
         return alias_map[normalized]
@@ -213,42 +215,6 @@ def disease_aliases(disease: str) -> List[str]:
         aliases.extend([" ".join(tokens), *tokens])
     return list(dict.fromkeys(alias for alias in aliases if alias))
 
-
-def paper_matches_disease(title: str, disease: str) -> bool:
-    title_lower = title.lower()
-    aliases = disease_aliases(disease)
-    if any(alias in title_lower for alias in aliases):
-        return True
-
-    key_tokens = [token for token in re.split(r"[\s/-]+", normalize_disease_name(disease)) if len(token) > 3]
-    return bool(key_tokens) and all(token in title_lower for token in key_tokens)
-
-
-def paper_has_conflicting_disease(title: str, disease: str) -> bool:
-    title_lower = title.lower()
-    if paper_matches_disease(title, disease):
-        return False
-
-    conflicting_markers = [
-        "lung cancer",
-        "nsclc",
-        "small cell lung",
-        "breast cancer",
-        "glioblastoma",
-        "prostate cancer",
-        "colorectal cancer",
-        "ovarian cancer",
-        "pancreatic cancer",
-        "leukemia",
-        "lymphoma",
-        "melanoma",
-    ]
-    allowed_aliases = set(disease_aliases(disease))
-    return any(marker in title_lower and marker not in allowed_aliases for marker in conflicting_markers)
-
-
-def contains_conflicting_disease(text: str, disease: str) -> bool:
-    return paper_has_conflicting_disease(text, disease)
 
 
 def expand_query(query: str) -> List[str]:
@@ -323,50 +289,59 @@ def build_query(disease: str, location: str) -> str:
 
 
 def score_paper(title: str, pub_date: str, disease: str, location: str = "") -> int:
-    score = 0
+    # Step 2: Implement Multi-Factor Scoring
+    # score = keyword_score (0–5) + recency_score (0–3) + relevance_score (0–5)
+    
     title_lower = title.lower()
-    location_lower = location.strip().lower()
-    has_treatment_intent = (
-        "treatment" in title_lower
-        or "therapy" in title_lower
-        or "clinical trial" in title_lower
-    )
     disease_lower = normalize_disease_name(disease)
-
-    if disease_lower and disease_lower in title_lower:
-        score += 5
-    elif paper_matches_disease(title, disease):
-        score += 4
-
-    if disease_lower == "lung cancer":
-        if "nsclc" in title_lower:
-            score += 4
-        if bool(re.search(r"(?<!non[-\s])small cell lung", title_lower)):
-            score += 4
-
-    if "treatment" in title_lower or "therapy" in title_lower:
-        score += 3
-    if "clinical trial" in title_lower:
-        score += 3
-    if "survival" in title_lower or "prognosis" in title_lower:
-        score += 2
-
-    year = extract_year(pub_date)
-
-    if year is not None and 2025 <= year <= 2026:
-        score += 3
-    elif year is not None and 2023 <= year <= 2024:
-        score += 2
+    location_lower = location.strip().lower()
+    aliases = disease_aliases(disease)
+    
+    # 1. Keyword Score (0-5)
+    keyword_score = 0
+    if any(alias in title_lower for alias in aliases):
+        keyword_score = 5
     else:
-        score += 1
+        # Check for partial matches or token matches
+        disease_tokens = [t for t in re.split(r"[\s/-]+", disease_lower) if len(t) > 3]
+        if disease_tokens and all(token in title_lower for token in disease_tokens):
+            keyword_score = 4
+        elif disease_tokens and any(token in title_lower for token in disease_tokens):
+            keyword_score = 2
 
-    if not has_treatment_intent:
-        score -= 2
-
+    # 2. Recency Score (0-3)
+    recency_score = 0
+    year = extract_year(pub_date)
+    if year is not None:
+        if 2025 <= year <= 2026:
+            recency_score = 3
+        elif 2023 <= year <= 2024:
+            recency_score = 2
+        elif year >= 2020:
+            recency_score = 1
+    
+    # 3. Relevance Score (0-5)
+    relevance_score = 0
+    # Clinical intent markers
+    intent_markers = {
+        "treatment": ["treatment", "therapy", "management", "intervention"],
+        "trial": ["clinical trial", "trial", "randomized", "phase"],
+        "prognosis": ["survival", "prognosis", "outcome", "mortality"]
+    }
+    
+    matched_intents = 0
+    for markers in intent_markers.values():
+        if any(marker in title_lower for marker in markers):
+            matched_intents += 1
+            
+    # Base relevance on intent (up to 4 points)
+    relevance_score = min(matched_intents * 2, 4)
+    
+    # Location match adds the final point (max 5)
     if location_lower and location_lower in title_lower:
-        score += 1
+        relevance_score = min(relevance_score + 1, 5)
 
-    return score
+    return keyword_score + recency_score + relevance_score
 
 
 def categorize_paper(title: str) -> str:
@@ -633,50 +608,58 @@ def build_key_takeaways(grouped_items: Dict[str, List[PubMedResult]], disease: s
 
 
 def calculate_overall_confidence(grouped_items: Dict[str, List[PubMedResult]]) -> str:
+    # Step 6: Fix Confidence Logic
+    # confidence based on: avg score, number of papers, variance
     all_items = [item for items in grouped_items.values() for item in items]
     if not all_items:
         return "Low"
 
-    populated_categories = sum(1 for category in CATEGORY_ORDER if grouped_items[category])
-    high_score_count = sum(1 for item in all_items if item.score >= 13)
-    moderate_score_count = sum(1 for item in all_items if item.score >= 10)
+    scores = [item.score for item in all_items]
+    avg_score = sum(scores) / len(scores)
+    count = len(scores)
+    
+    # Calculate variance (standard deviation proxy)
+    if count > 1:
+        variance = sum((s - avg_score) ** 2 for s in scores) / count
+    else:
+        variance = 0
 
-    if populated_categories >= 3 and high_score_count >= 3:
+    # High Confidence: Good number of papers, high average, and high consistency (low variance)
+    if count >= 6 and avg_score >= 11 and variance < 4:
         return "High"
-    if populated_categories >= 2 and moderate_score_count >= 4:
+    # Medium Confidence: Decent papers and score, or high score with some variance
+    if count >= 4 and avg_score >= 9:
         return "Medium"
     return "Low"
 
 
 def build_uncertainty_notes(grouped_items: Dict[str, List[PubMedResult]]) -> str:
     all_items = [item for items in grouped_items.values() for item in items]
+    
+    # Step 7: Update UI Messaging
+    confidence = calculate_overall_confidence(grouped_items)
+    
     if not all_items:
         return "Findings are based on very limited evidence from the selected PubMed results."
 
     notes: List[str] = []
-    high_score_count = sum(1 for item in all_items if item.score >= 13)
+    avg_score = sum(item.score for item in all_items) / len(all_items)
+    
+    if confidence == "Low" or avg_score < 7:
+        notes.append("Lower-confidence results shown due to limited strong evidence.")
+
+    high_score_count = sum(1 for item in all_items if item.score >= 11)
     low_strength_categories = [
         category for category in CATEGORY_ORDER if calculate_trend_strength(grouped_items[category]) == "Low"
     ]
-    recent_years = [extract_year(item.pub_date) for item in all_items if extract_year(item.pub_date) is not None]
-
+    
     if high_score_count <= 2:
         notes.append("Findings are based on a limited number of high-scoring studies.")
-    elif len(all_items) <= 4:
-        notes.append("Evidence is directionally useful but comes from a relatively small set of selected papers.")
-
+        
     if low_strength_categories:
         notes.append(
             f"Signals are weaker in {', '.join(low_strength_categories)}, where coverage is sparse or lower-scoring."
         )
-
-    if has_conflict_signals(all_items):
-        notes.append(
-            "Some studies compare differing approaches, indicating potential variation in outcomes."
-        )
-
-    if recent_years and all(year >= 2025 for year in recent_years):
-        notes.append("Evidence is strong but primarily concentrated in recent publications.")
 
     if not notes:
         notes.append("The selected papers are fairly consistent, but conclusions still depend on a small curated set of results.")
@@ -984,24 +967,16 @@ async def fetch_pubmed_results(disease: str, location: str = "") -> QueryRespons
         if not title or not pubmed_id:
             continue
 
-        if not paper_matches_disease(title, disease):
-            continue
-
-        if paper_has_conflicting_disease(title, disease):
-            continue
-
         normalized_title = re.sub(r"\s+", " ", title.lower()).strip()
         if normalized_title in seen_titles:
             continue
         seen_titles.add(normalized_title)
 
         category = categorize_paper(title)
+        # Step 2 & Step 4: Always Rank, Never Reject
         score = score_paper(title=title, pub_date=pub_date, disease=disease, location=location)
         reason = build_reason(title=title, pub_date=pub_date, category=category, disease=disease)
         impact = build_impact(title=title, category=category, disease=disease)
-
-        if contains_conflicting_disease(reason, disease) or contains_conflicting_disease(impact, disease):
-            continue
 
         results.append(
             PubMedResult(
