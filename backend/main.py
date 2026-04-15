@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -909,11 +910,14 @@ async def generate_llm_response(structured_data: dict) -> str:
 
 
 async def fetch_pubmed_for_query(client: httpx.AsyncClient, query: str) -> List[dict]:
+    ncbi_api_key = os.getenv("NCBI_API_KEY", "")
+    key_param = {"api_key": ncbi_api_key} if ncbi_api_key else {}
     params_esearch = {
         "db": PUBMED_DB,
         "term": query,
         "retmode": "json",
         "retmax": PUBMED_RETMAX,
+        **key_param,
     }
 
     try:
@@ -931,6 +935,7 @@ async def fetch_pubmed_for_query(client: httpx.AsyncClient, query: str) -> List[
         "db": PUBMED_DB,
         "id": ",".join(id_list),
         "retmode": "json",
+        **key_param,
     }
 
     try:
@@ -964,7 +969,9 @@ async def fetch_pubmed_results(disease: str, location: str = "") -> QueryRespons
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         raw_items: List[dict] = []
-        for expanded_query in expanded_queries:
+        for i, expanded_query in enumerate(expanded_queries):
+            if i > 0:
+                await asyncio.sleep(0.15)
             raw_items.extend(await fetch_pubmed_for_query(client, expanded_query))
 
     seen_titles = set()
