@@ -63,7 +63,7 @@ function StrengthBar({ strength }) {
       {Array.from({ length: 6 }).map((_, index) => (
         <span
           key={`${strength}-${index}`}
-          className={`h-1.5 w-4 rounded-full ${index < activeSegments ? signalDot(strength) : "bg-slate-200"}`}
+          className={`h-1.5 w-4 flex-shrink-0 rounded-full ${index < activeSegments ? signalDot(strength) : "bg-slate-200"}`}
         />
       ))}
     </div>
@@ -485,7 +485,7 @@ function KeySignals({ results }) {
     <section className="rounded-[2rem] border border-[color:var(--cliniq-line)] bg-[color:var(--cliniq-panel)] p-6 shadow-[0_18px_48px_rgba(20,52,72,0.06)] xl:p-8">
       <h3 className="font-serif text-2xl text-[color:var(--cliniq-ink)]">Key Signals</h3>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {CATEGORY_KEYS.filter((category) => category !== "Other").map((category) => {
           const section = results.raw_data?.[category];
           const strength = section?.trend_strength || "Low";
@@ -493,17 +493,21 @@ function KeySignals({ results }) {
           return (
             <article
               key={category}
-              className="rounded-[1.5rem] border border-[color:var(--cliniq-line)] bg-white/80 p-5"
+              className="group flex flex-col justify-between rounded-[1.5rem] border border-[color:var(--cliniq-line)] bg-white/80 p-5 transition-all hover:bg-white hover:shadow-lg"
             >
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-[color:var(--cliniq-ink)]">{category}</div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="truncate text-sm font-bold tracking-tight text-[color:var(--cliniq-ink)]" title={category}>
+                    {category}
+                  </div>
                   <StrengthBar strength={strength} />
                 </div>
                 <span
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${trendClasses(strength)}`}
+                  className={`inline-flex flex-shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-wider ${trendClasses(
+                    strength,
+                  )}`}
                 >
-                  <span className={`h-2.5 w-2.5 rounded-full ${signalDot(strength)}`} />
+                  <span className={`h-2 w-2 rounded-full ${signalDot(strength)}`} />
                   {strength}
                 </span>
               </div>
