@@ -10,7 +10,7 @@ PUBMED_ESUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fc
 PUBMED_DB = "pubmed"
 PUBMED_RETMAX = 30
 
-app = FastAPI(title="AI Medical Research Assistant - Phase 1")
+app = FastAPI(title="ClinIQ - Phase 1")
 
 app.add_middleware(
     CORSMiddleware,

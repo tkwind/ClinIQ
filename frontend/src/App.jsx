@@ -36,7 +36,7 @@ export default function App() {
 
   return (
     <main style={{ padding: "1rem", fontFamily: "sans-serif" }}>
-      <h1>AI Medical Research Assistant (Phase 1)</h1>
+      <h1>ClinIQ (Phase 1)</h1>
       <form onSubmit={handleSubmit}>
         <input
           type="text"
